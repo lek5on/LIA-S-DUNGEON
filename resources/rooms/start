@@ -1,2 +1,3 @@
-{:desc "You find yourself in a round room with a pillar in the middle."
+{:title "Круглая комната"
+ :desc "Вы оказываетесь в круглой комнате с колонной посередине."
  :exits {:north :closet :south :hallway}}

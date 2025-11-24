@@ -1,3 +1,4 @@
-{:desc "You are in a long, low-lit hallway that turns to the east."
+{:title "Коридор"
+ :desc "Вы в длинном тусклом коридоре, который поворачивает на восток."
  :items #{:detector}
  :exits {:north :start :east :promenade} }

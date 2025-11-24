@@ -12,27 +12,59 @@
   (alter from disj obj)
   (alter to conj obj))
 
+(def direction-labels
+  {:north "север"
+   :south "юг"
+   :east "восток"
+   :west "запад"})
+
+(def direction-aliases
+  {"north" :north "n" :north "север" :north "с" :north
+   "south" :south "s" :south "юг" :south "ю" :south
+   "east" :east "e" :east "восток" :east "в" :east
+   "west" :west "w" :west "запад" :west "з" :west})
+
+(defn- normalize-direction [direction]
+  (let [dir (-> direction str str/lower-case)]
+    (or (direction-aliases dir) (keyword dir))))
+
+(def item-translations
+  {:keys "ключи"
+   :detector "детектор"
+   :bunny "кролик"
+   :turtle "черепаха"
+   :puzzle "головоломка"
+   :trader "торговец"})
+
+(defn- item-name [item-kw]
+  (let [ik (keyword item-kw)]
+    (or (:name (items/get-weapon ik))
+        (:name (items/get-armor ik))
+        (:name (items/get-potion ik))
+        (item-translations ik)
+        (name ik))))
+
 ;; Command functions
 
 (defn look
-  "Get a description of the surrounding environs and its contents."
+  "Получить описание комнаты и всего, что в ней есть."
   []
   (let [room @player/*current-room*
-        exits (->> @(:exits room) keys (map name) (clojure.string/join ", "))
+        exits (->> @(:exits room) keys (map #(get direction-labels % (name %))) (str/join ", "))
         items (seq @(:items room))
         mobs (seq @(:mobs room))
         others (disj @(:inhabitants room) player/*name*)]
     (str (:desc room)
-         "\nExits: " exits "\n"
-         (when items (str "You see: " (clojure.string/join ", " (map name items)) "\n"))
-         (when mobs (str "Enemies here: " (clojure.string/join ", " (map #(-> % deref :name) mobs)) "\n"))
-         (when (seq others) (str "Also here: " (clojure.string/join ", " (map name others)) "\n")))))
+         "\nВыходы: " exits "\n"
+         (when items (str "Вы видите: " (str/join ", " (map item-name items)) "\n"))
+         (when mobs (str "Противники: " (str/join ", " (map #(-> % deref :name) mobs)) "\n"))
+         (when (seq others) (str "Здесь также: " (str/join ", " (map name others)) "\n")))))
 
 (defn move
-  "\"♬ We gotta get out of this place... ♪\" Give a direction."
+  "\"♬ We gotta get out of this place... ♪\" Куда идём?"
   [direction]
   (dosync
-   (let [target-name ((:exits @player/*current-room*) (keyword direction))
+   (let [target-name ((:exits @player/*current-room*) (normalize-direction direction))
          target (@rooms/rooms target-name)]
      (if target
        (do
@@ -41,48 +73,49 @@
                             (:inhabitants target))
          (ref-set player/*current-room* target)
          (look))
-       "You can't go that way."))))
+       "Туда не пройти."))))
 
 (defn grab
-  "Pick something up."
+  "Поднять предмет."
   [thing]
   (dosync
    (if (rooms/room-contains? @player/*current-room* thing)
      (do (move-between-refs (keyword thing)
                             (:items @player/*current-room*)
                             player/*inventory*)
-         (str "You picked up the " thing "."))
-     (str "There isn't any " thing " here."))))
+         (str "Вы подобрали " (item-name thing) "."))
+     (str "Здесь нет " (item-name thing) "."))))
 
 (defn discard
-  "Put something down that you're carrying."
+  "Бросить предмет, который вы несёте."
   [thing]
   (dosync
    (if (player/carrying? thing)
      (do (move-between-refs (keyword thing)
                             player/*inventory*
                             (:items @player/*current-room*))
-         (str "You dropped the " thing "."))
-     (str "You're not carrying a " thing "."))))
+         (str "Вы бросили " (item-name thing) "."))
+     (str "У вас нет " (item-name thing) "."))))
 
 (defn inventory
-  "See what you've got."
+  "Посмотреть свой инвентарь."
   []
-  (str "You are carrying:\n"
-       (str/join "\n" (seq @player/*inventory*))))
+  (str "У вас с собой:\n"
+       (str/join "\n" (map item-name (seq @player/*inventory*)))))
 
 (defn detect
-  "If you have the detector, you can see which room an item is in."
+  "Если у вас есть детектор, можно узнать, в какой комнате лежит предмет."
   [item]
-  (if (@player/*inventory* :detector)
-    (if-let [room (first (filter #((:items %) (keyword item))
-                                 (vals @rooms/rooms)))]
-      (str item " is in " (:name room))
-      (str item " is not in any room."))
-    "You need to be carrying the detector for that."))
+  (let [item-kw (keyword item)]
+    (if (@player/*inventory* :detector)
+      (if-let [room (first (filter #((:items %) item-kw)
+                                   (vals @rooms/rooms)))]
+        (str (item-name item-kw) " находится в комнате \"" (rooms/room-title room) "\".")
+        (str (item-name item-kw) " нет ни в одной комнате."))
+      "Нужно нести детектор, чтобы это сделать.")))
 
 (defn say
-  "Say something out loud so everyone in the room can hear."
+  "Сказать что-то вслух, чтобы услышали все в комнате."
   [& words]
   (let [message (str/join " " words)]
     (doseq [inhabitant (disj @(:inhabitants @player/*current-room*)
@@ -90,10 +123,10 @@
       (binding [*out* (player/streams inhabitant)]
         (println message)
         (println player/prompt)))
-    (str "You said " message)))
+    (str "Вы сказали: " message)))
 
 (defn help
-  "Show available commands and what they do."
+  "Показать доступные команды и их описание."
   []
   (str/join "\n" (map #(str (key %) ": " (:doc (meta (val %))))
                       (dissoc (ns-publics 'mire.commands)
@@ -104,7 +137,7 @@
 ;; Game actions: combat, items, puzzles
 
 (defn attack-mob
-  "Attack a mob. Usage: attack [mobname]." [& [mob-name]]
+  "Атаковать моба. Команда: attack/атаковать [имя-моба]." [& [mob-name]]
   (let [pstats (or player/*stats* (player/init-stats 50 2))
         room @player/*current-room*
         target (or (mobs/find-mob-in-room room (when mob-name (keyword mob-name)))
@@ -115,78 +148,100 @@
         (player/add-xp! pstats (:xp @target))
         (player/heal! pstats (int (* 0.75 (:max-hp @pstats))))
         (mobs/remove-mob-from-room! target room)
-        (str pmsg "\nYou killed " (:name @target) ". You gain " (:xp @target) " XP."))
+        (str pmsg "\nВы убили " (:name @target) ". Вы получаете " (:xp @target) " опыта."))
       (str pmsg "\n" (mobs/mob-attack! target pstats)))))
 
 (defn use-item
-  "Use an item from inventory. Usage: use <item>" [item]
+  "Использовать предмет из инвентаря. Команда: use/использовать <item>." [item]
   (let [pstats (or player/*stats* (player/init-stats 50 2))]
     (if (player/carrying? item)
       (do (dosync (alter player/*inventory* disj (keyword item)))
           (or (items/use-potion! pstats (keyword item))
-              (str "You used " item ", but nothing happened.")))
-      (str "You're not carrying " item))))
+              (str "Вы использовали " (item-name item) ", но ничего не произошло.")))
+      (str "У вас нет " (item-name item) "."))))
 
 (defn equip-item
-  "Equip a weapon. Usage: equip <weapon>" [weapon]
+  "Экипировать оружие. Команда: equip/экипировать <weapon>." [weapon]
   (let [pstats (or player/*stats* (player/init-stats 50 2))
         w (items/get-weapon (keyword weapon))]
     (if w
       (do (player/equip-weapon! pstats w)
-          (str "You equipped " (:name w) "."))
-      (str "No such weapon: " weapon))))
+          (str "Вы экипировали: " (:name w) "."))
+      (str "Оружие не найдено: " weapon))))
 
 (defn show-stats
-  "Show player stats." []
-  (str "Stats: " (pr-str @(or player/*stats* (player/init-stats 50 2)))))
+  "Показать характеристики персонажа." []
+  (str "Характеристики: " (pr-str @(or player/*stats* (player/init-stats 50 2)))))
 
 (defn solve-puzzle
-  "Show or attempt to solve a puzzle in the current room."
+  "Посмотреть или решить загадку в текущей комнате. Команда: solve/решить <номер>."
   [choice]
   (let [room @player/*current-room*]
     (if-not (@(:items room) :puzzle)
-      "There is no puzzle here."
+      "Здесь нет загадки."
       (if (nil? choice)
         (let [p (puzzles/random-puzzle)]
-          (str "Puzzle: " (:q p) "\nChoices: " (pr-str (:choices p)) "\nUse: solve <choice-index>"))
+          (str "Загадка: " (:q p) "\nВарианты: " (pr-str (:choices p)) "\nКоманда: solve/решить <номер-выбора>"))
         (let [idx (try (Integer/parseInt choice) (catch Exception _ nil))
               p (puzzles/random-puzzle)]
           (if (nil? idx)
-            "Invalid choice"
+            "Неверный выбор."
             (if (= idx (:answer p))
               (do (player/add-xp! (or player/*stats* (player/init-stats 50 2)) (:xp p))
                   (dosync (alter (:items room) disj :puzzle))
-                  (str "Correct! You gain " (:xp p) " XP."))
+                  (str "Верно! Вы получаете " (:xp p) " опыта."))
               (do (player/damage! (or player/*stats* (player/init-stats 50 2))
                       (int (* 0.2 (:max-hp (or player/*stats* (player/init-stats 50 2))))))
                   (dosync (alter (:items room) disj :puzzle))
-                  "Wrong! You take 20% damage and the puzzle disappears."))))))))
+                  "Неправильно! Вы теряете 20% здоровья, и загадка исчезает."))))))))
 
 (def commands {"move" move
+               "идти" move
                "north" (fn [] (move :north))
                "south" (fn [] (move :south))
                "east" (fn [] (move :east))
                "west" (fn [] (move :west))
+               "север" (fn [] (move :north))
+               "юг" (fn [] (move :south))
+               "восток" (fn [] (move :east))
+               "запад" (fn [] (move :west))
                "grab" grab
+               "взять" grab
+               "поднять" grab
                "discard" discard
+               "выбросить" discard
+               "бросить" discard
                "inventory" inventory
+               "инвентарь" inventory
                "attack" attack-mob
+               "атаковать" attack-mob
+               "атака" attack-mob
                "use" use-item
+               "использовать" use-item
                "equip" equip-item
+               "экипировать" equip-item
                "solve" solve-puzzle
+               "загадка" solve-puzzle
+               "решить" solve-puzzle
                "stats" show-stats
+               "характеристики" show-stats
+               "статы" show-stats
                "detect" detect
+               "детектор" detect
                "look" look
+               "осмотреться" look
                "say" say
-               "help" help})
+               "сказать" say
+               "help" help
+               "помощь" help})
 
 ;; Command handling
 
 (defn execute
-  "Execute a command that is passed to us."
+  "Выполнить переданную команду."
   [input]
   (try (let [[command & args] (.split input " +")]
          (apply (commands command) args))
        (catch Exception e
          (.printStackTrace e (new java.io.PrintWriter *err*))
-         "You can't do that!")))
+         "Так нельзя сделать!")))

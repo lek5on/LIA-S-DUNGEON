@@ -1,3 +1,4 @@
-{:desc "The promenade stretches out before you."
+{:title "Променад"
+ :desc "Променад простирается перед вами."
  :exits {:west :hallway}
  :items #{:bunny :turtle}}

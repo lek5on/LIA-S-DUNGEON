@@ -1,14 +1,14 @@
- (ns mire.puzzles)
+(ns mire.puzzles)
 
-;; Simple puzzle set. Each puzzle has :q question, :choices vector, :answer index, :xp reward
+;; Набор простых загадок. Каждая загадка содержит :q (вопрос), :choices (варианты), :answer (индекс ответа), :xp (награда).
 
 (def puzzles
-  [{:id :p1 :q "What walks on four legs in the morning, two at noon, and three in the evening?"
-    :choices ["Cat" "Human" "Table"] :answer 1 :xp 30}
-   {:id :p2 :q "I speak without a mouth and hear without ears. What am I?"
-    :choices ["Echo" "Wind" "Tree"] :answer 0 :xp 25}
-   {:id :p3 :q "What has keys but can't open locks?"
-    :choices ["Piano" "Map" "River"] :answer 0 :xp 20}])
+  [{:id :p1 :q "Кто утром ходит на четырёх ногах, днём на двух, а вечером на трёх?"
+    :choices ["Кот" "Человек" "Стол"] :answer 1 :xp 30}
+   {:id :p2 :q "Я говорю без рта и слышу без ушей. Кто я?"
+    :choices ["Эхо" "Ветер" "Дерево"] :answer 0 :xp 25}
+   {:id :p3 :q "Что имеет клавиши, но не может открыть замки?"
+    :choices ["Пианино" "Карта" "Река"] :answer 0 :xp 20}])
 
 (defn random-puzzle []
   (let [p (rand-nth puzzles)]

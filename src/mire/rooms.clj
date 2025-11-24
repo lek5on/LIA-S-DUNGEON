@@ -9,6 +9,7 @@
     (conj rooms
           {(keyword (.getName file))
            {:name (keyword (.getName file))
+            :title (or (:title room) (name (.getName file)))
             :desc (:desc room)
             :exits (ref (:exits room))
             :items (ref (or (:items room) #{}))
@@ -33,18 +34,22 @@
   (dosync
    (doseq [[k room] @rooms]
      (when (not= k :start)
-       (let [r @(:items room)]
-         ;; 50% chance to add a mob
-         (when (< (rand) 0.5)
-           (mobs/add-mob-to-room (rand-nth (keys mobs/mobs)) room))
-         ;; 20% chance to set a puzzle
-         (when (< (rand) 0.2)
-           (alter (:items room) conj :puzzle)
-           (dosync (alter (:items room) identity)))
-         ;; 10% chance to add a trader flag (represented as an item :trader)
-         (when (< (rand) 0.1)
-           (alter (:items room) conj :trader)))))))
+       ;; 50% chance to add a mob
+       (when (< (rand) 0.5)
+         (mobs/add-mob-to-room (rand-nth (keys mobs/mobs)) room))
+       ;; 20% chance to set a puzzle
+       (when (< (rand) 0.2)
+         (alter (:items room) conj :puzzle)
+         (dosync (alter (:items room) identity)))
+       ;; 10% chance to add a trader flag (represented as an item :trader)
+       (when (< (rand) 0.1)
+         (alter (:items room) conj :trader)))))))
 
 (defn room-contains?
   [room thing]
   (@(:items room) (keyword thing)))
+
+(defn room-title
+  "Вернуть удобочитаемое имя комнаты."
+  [room]
+  (or (:title room) (-> room :name name)))

@@ -8,7 +8,7 @@
 
 (defn- cleanup []
   "Drop all inventory and remove player from room and player list."
-  (dosync
+ (dosync
    (doseq [item @player/*inventory*]
      (commands/discard item))
    (commute player/streams dissoc player/*name*)
@@ -17,17 +17,24 @@
 
 (defn- get-unique-player-name [name]
   (if (@player/streams name)
-    (do (print "That name is in use; try again: ")
+    (do (print "Это имя уже занято; попробуйте другое: ")
         (flush)
         (recur (read-line)))
     name))
+
+(defn- weapon-title [w]
+  (or (:name (items/get-weapon w)) (name w)))
+
+(defn- print-weapon-options []
+  (doseq [[idx w] (map-indexed vector (keys items/weapons))]
+    (println (str (inc idx) ") " (weapon-title w) " (" (name w) ")"))))
 
 (defn- mire-handle-client [in out]
   (binding [*in* (io/reader in)
             *out* (io/writer out)
             *err* (io/writer System/err)]
 
-    (print "\nWhat is your name? ") (flush)
+    (print "\nКак тебя зовут? ") (flush)
     (binding [player/*name* (get-unique-player-name (read-line))
               player/*current-room* (ref (@rooms/rooms :start))
               player/*inventory* (ref #{})
@@ -37,12 +44,11 @@
        (commute player/streams assoc player/*name* *out*))
 
       ;; Welcome, show room and allow choosing a starting weapon
-      (println "\nWelcome to Mire," player/*name* "!")
+      (println "\nДобро пожаловать в Mire," player/*name* "!")
       (println (commands/look))
-      (println "Choose your starting weapon:")
-      (doseq [[idx w] (map-indexed vector (keys items/weapons))]
-        (println (str (inc idx) ") " (name w))))
-      (print "Enter number (or blank to skip): ") (flush)
+      (println "Выберите стартовое оружие:")
+      (print-weapon-options)
+      (print "Введите номер (или оставьте пустым, чтобы пропустить): ") (flush)
       (let [sel (try (Integer/parseInt (read-line)) (catch Exception _ nil))
             choices (vec (keys items/weapons))]
         (when (and sel (<= 1 sel) (<= sel (count choices)))
@@ -59,8 +65,10 @@
                   "7" "stats"
                   "8" "help"
                   "9" "say"
-                  "0" "quit"}]
-        (println "\nCommands: 1)Look 2)Move 3)Inventory 4)Attack 5)Use 6)Equip 7)Stats 8)Help 9)Say 0)Quit")
+                  "0" "quit"
+                  "выйти" "quit"
+                  "выход" "quit"}]
+        (println "\nКоманды: 1)Осмотреться 2)Идти 3)Инвентарь 4)Атаковать 5)Использовать 6)Экипировать 7)Статы 8)Помощь 9)Сказать 0)Выйти")
         (print player/prompt) (flush)
 
         (try
@@ -70,7 +78,7 @@
                     cmd (get menu trim trim)]
                 (cond
                   (= cmd "quit")
-                  (do (println "Goodbye!") (flush))
+                  (do (println "До встречи!") (flush))
 
                   (= cmd "look")
                   (println (commands/execute "look"))
@@ -85,32 +93,31 @@
                   (println (commands/execute "help"))
 
                   (= cmd "move")
-                  (do (print "Direction (north/south/east/west): ") (flush)
+                  (do (print "Куда идти (север/юг/восток/запад): ") (flush)
                       (let [d (clojure.string/trim (read-line))]
                         (println (commands/execute (str "move " d)))))
 
                   (= cmd "attack")
-                  (do (print "Mob name (optional): ") (flush)
+                  (do (print "Имя врага (опционально): ") (flush)
                       (let [m (clojure.string/trim (read-line))]
                         (println (commands/execute (if (empty? m) "attack" (str "attack " m))))))
 
                   (= cmd "use")
-                  (do (print "Item name: ") (flush)
+                  (do (print "Название предмета: ") (flush)
                       (let [i (clojure.string/trim (read-line))]
                         (println (commands/execute (str "use " i)))))
 
                   (= cmd "equip")
-                  (do (println "Choose weapon:")
-                      (doseq [[idx w] (map-indexed vector (keys items/weapons))]
-                        (println (str (inc idx) ") " (name w))))
-                      (print "Enter number: ") (flush)
+                  (do (println "Выберите оружие:")
+                      (print-weapon-options)
+                      (print "Введите номер: ") (flush)
                       (let [sel (try (Integer/parseInt (read-line)) (catch Exception _ nil))
                             choices (vec (keys items/weapons))]
                         (when (and sel (<= 1 sel) (<= sel (count choices)))
                           (println (commands/execute (str "equip " (name (choices (dec sel)))))))))
 
                   (= cmd "say")
-                  (do (print "Say: ") (flush)
+                  (do (print "Сказать: ") (flush)
                       (let [msg (read-line)] (println (commands/execute (str "say " msg)))))
 
                   :else
@@ -124,6 +131,6 @@
   ([port dir]
      (rooms/add-rooms dir)
      (defonce server (socket/create-server (Integer. port) mire-handle-client))
-     (println "Launching Mire server on port" port))
+     (println "Запускаю сервер Mire на порту" port))
   ([port] (-main port "resources/rooms"))
   ([] (-main 3333)))
