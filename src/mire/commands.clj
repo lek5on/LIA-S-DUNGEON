@@ -4,7 +4,8 @@
             [mire.player :as player]
             [mire.mobs :as mobs]
             [mire.items :as items]
-            [mire.puzzles :as puzzles]))
+            [mire.puzzles :as puzzles]
+            [mire.lobby :as lobby]))
 
 (defn- move-between-refs
   "Move one instance of obj between from and to. Must call in a transaction."
@@ -99,6 +100,11 @@
                       (dissoc (ns-publics 'mire.commands)
                               'execute 'commands))))
 
+(defn lobby-status
+  "Show lobby readiness information."
+  []
+  (lobby/status))
+
 ;; Command data
 
 ;; Game actions: combat, items, puzzles
@@ -178,7 +184,8 @@
                "detect" detect
                "look" look
                "say" say
-               "help" help})
+               "help" help
+               "status" lobby-status})
 
 ;; Command handling
 
