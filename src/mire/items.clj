@@ -1,12 +1,12 @@
  (ns mire.items)
 
-;; Basic items: weapons, armor, potions.
+;; Basic items: weapons, armor, potions, upgrades.
 
 (def weapons
-  {:fists {:name "Fists" :damage 1}
-   :sword {:name "Sword" :damage 6}
-   :club {:name "Club" :damage 4}
-   :axe {:name "Axe" :damage 7}})
+  {:fists {:name "Fists" :damage 4 :min-damage 2 :max-damage 6}
+   :sword {:name "Sword" :damage 6 :min-damage 4 :max-damage 8}
+   :club {:name "Club" :damage 4 :min-damage 2 :max-damage 6}
+   :axe {:name "Axe" :damage 7 :min-damage 5 :max-damage 9}})
 
 (def armors
   {:none {:name "Clothes" :resist 0}
@@ -18,6 +18,10 @@
    :hp-medium {:name "Medium HP Potion" :heal 50}
    :resist {:name "Resistance Potion" :resist 25 :turns 3}})
 
+;; Weapon upgrade item
+(def upgrade-kit
+  {:name "Weapon Upgrade" :damage-bonus 2})
+
 (defn get-weapon [k]
   (when k (get weapons (keyword k))))
 
@@ -26,6 +30,9 @@
 
 (defn get-potion [k]
   (when k (get potions (keyword k))))
+
+(defn is-upgrade? [k]
+  (= (keyword k) :weapon-upgrade))
 
 (defn weapon-damage [weapon]
   (or (:damage weapon) 0))
@@ -40,9 +47,9 @@
     (if-let [heal (:heal p)]
       (do
         ((resolve 'mire.player/heal!) stats-ref heal)
-        (str "You used " (:name p) " and recovered " heal " HP."))
+        (str "You drank " (:name p) " and restored " heal " HP."))
       (if-let [res (:resist p)]
         (let [turns (:turns p 3)]
           ((resolve 'mire.player/apply-resist!) stats-ref res turns)
-          (str "You used " (:name p) " and gained " res "% resistance for " turns " turns."))
+          (str "You drank " (:name p) " and gained " res "% resistance for " turns " turns."))
         (str "You used " (:name p) ", but nothing happened.")))))

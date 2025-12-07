@@ -1,6 +1,7 @@
 (ns mire.rooms
   (:require [mire.mobs :as mobs]
-            [mire.puzzles :as puzzles]))
+            [mire.puzzles :as puzzles]
+            [mire.dungeon-gen :as dungeon-gen]))
 
 (def rooms (ref {}))
 
@@ -24,26 +25,22 @@
            (.listFiles (java.io.File. dir)))))
 
 (defn add-rooms
-  "Look through all the files in a dir for files describing rooms and add
-  them to the mire.rooms/rooms map."
-  [dir]
-  (dosync
-   (alter rooms load-rooms dir))
-  ;; After loading rooms, randomly populate non-start rooms with mobs/puzzles/traders
-  (dosync
-   (doseq [[k room] @rooms]
-     (when (not= k :start)
-       (let [r @(:items room)]
-         ;; 50% chance to add a mob
-         (when (< (rand) 0.5)
-           (mobs/add-mob-to-room (rand-nth (keys mobs/mobs)) room))
-         ;; 20% chance to set a puzzle
-         (when (< (rand) 0.2)
-           (alter (:items room) conj :puzzle)
-           (dosync (alter (:items room) identity)))
-         ;; 10% chance to add a trader flag (represented as an item :trader)
-         (when (< (rand) 0.1)
-           (alter (:items room) conj :trader)))))))
+  ([dir use-procedural?]
+     (if use-procedural?
+       (dosync
+        (ref-set rooms (assoc (dungeon-gen/generate-full-dungeon) :start
+                             {:name :start
+                              :desc "You find yourself in the entrance to a vast underground labyrinth."
+                              :exits (ref {:north :room-0-1 :east :room-1-0})
+                              :items (ref #{})
+                              :inhabitants (ref #{})
+                              :mobs (ref #{})
+                              :traders (ref [])
+                              :puzzle (ref nil)})))
+       (dosync
+        (alter rooms load-rooms dir))))
+  ([dir]
+     (add-rooms dir true)))
 
 (defn room-contains?
   [room thing]
