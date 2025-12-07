@@ -8,6 +8,10 @@
 (def prompt "> ")
 (def streams (ref {}))
 
+;; XP thresholds for each level (level 1 needs 50 XP, level 2 needs 100, etc.)
+(defn xp-for-level [level]
+  (* 50 level))
+
 (defn carrying? [thing]
   (some #{(keyword thing)} @*inventory*))
 
@@ -17,11 +21,14 @@
   (ref {:hp hp
         :max-hp hp
         :damage damage
+        :base-damage damage  ;; Base damage without weapon
         :xp 0
         :level 1
-  :slots {:weapon nil :armor nil :potions #{}}
-  :resist_pct 0
-  :resist_turns 0}))
+        :pending-levelup false  ;; Flag for pending level-up choice
+        :gold 0
+        :slots {:weapon nil :armor nil :potions #{}}
+        :resist_pct 0
+        :resist_turns 0}))
 
 (defn heal! [stats-ref amt]
   (dosync
@@ -52,24 +59,61 @@
 (defn alive? [stats-ref]
   (> (:hp @stats-ref) 0))
 
-(defn add-xp! [stats-ref amt]
+(defn check-level-up [stats-ref]
+  "Check if player has enough XP to level up. Returns :levelup if pending, nil otherwise."
+  (let [s @stats-ref
+        threshold (xp-for-level (:level s))]
+    (when (and (>= (:xp s) threshold) (not (:pending-levelup s)))
+      (dosync
+       (alter stats-ref assoc :pending-levelup true))
+      :levelup)))
+
+(defn apply-level-up! [stats-ref choice]
+  "Apply level-up bonus based on choice: :damage or :hp"
   (dosync
    (alter stats-ref (fn [s]
-                      (let [new-xp (+ (:xp s) amt)
-                            threshold (* 100 (:level s))]
-                        (if (>= new-xp threshold)
-                          (-> s
-                              (assoc :xp (- new-xp threshold))
-                              (update :level inc)
-                              (update :max-hp (fn [m] (+ m 10)))
-                              (assoc :hp (+ (:hp s) 10)))
-                          (assoc s :xp new-xp)))))))
+                      (let [threshold (xp-for-level (:level s))
+                            new-xp (- (:xp s) threshold)
+                            base-update (-> s
+                                            (assoc :xp new-xp)
+                                            (update :level inc)
+                                            (assoc :pending-levelup false))]
+                        (case choice
+                          :damage (update base-update :base-damage + 2)
+                          :hp (-> base-update
+                                  (update :max-hp + 15)
+                                  (update :hp + 15))
+                          base-update))))))
+
+(defn add-xp! [stats-ref amt]
+  (dosync
+   (alter stats-ref update :xp + amt))
+  ;; Check for level up after adding XP
+  (check-level-up stats-ref))
 
 (defn equip-weapon! [stats-ref weapon]
   (dosync
    (alter stats-ref assoc-in [:slots :weapon] weapon)
    (alter stats-ref (fn [s]
-                      (assoc s :damage (+ (:damage s) (or (:damage weapon) 0)))))))
+                      (let [base (:base-damage s)
+                            weapon-dmg (or (:damage weapon) 0)]
+                        (assoc s :damage (+ base weapon-dmg)))))))
+
+(defn upgrade-weapon! [stats-ref]
+  "Upgrade equipped weapon damage by 2. Returns true if successful."
+  (dosync
+   (let [s @stats-ref
+         weapon (get-in s [:slots :weapon])]
+     (if weapon
+       (do
+         (alter stats-ref update-in [:slots :weapon :damage] + 2)
+         (alter stats-ref update :damage + 2)
+         true)
+       ;; No weapon equipped, upgrade base damage (fists)
+       (do
+         (alter stats-ref update :base-damage + 2)
+         (alter stats-ref update :damage + 2)
+         true)))))
 
 (defn equip-armor! [stats-ref armor]
   (dosync
@@ -80,3 +124,20 @@
   (dosync
    (alter stats-ref assoc :resist_pct pct)
    (alter stats-ref assoc :resist_turns turns)))
+
+(defn add-gold! [stats-ref amt]
+  "Add gold to the player's stats."
+  (dosync
+   (alter stats-ref update :gold + amt)))
+
+(defn spend-gold! [stats-ref amt]
+  "Spend gold from the player's stats. Returns true if successful."
+  (dosync
+   (if (>= (:gold @stats-ref) amt)
+     (do (alter stats-ref update :gold - amt)
+         true)
+     false)))
+
+(defn get-gold [stats-ref]
+  "Get the player's current gold amount."
+  (:gold @stats-ref))
